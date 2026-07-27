@@ -1,0 +1,29 @@
+node_modules/
+.expo/
+dist/
+web-build/
+*.db
+*.db-journal
+.env
+.env.local
+.env.production
+backend/data/
+backend/dist/
+backend/*.log
+*.tsbuildinfo
+npm-debug.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-report/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

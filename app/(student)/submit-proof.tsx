@@ -6,6 +6,7 @@ import * as ImagePicker from 'expo-image-picker';
 
 import { api } from '@/services/api';
 import { Card, PrimaryButton } from '@/components/ui';
+import Toast from '@/components/Toast';
 import { useThemeContext } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 
@@ -22,6 +23,7 @@ export default function SubmitProof() {
   const [loading, setLoading] = useState(false);
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
+  const [toastVisible, setToastVisible] = useState(false);
 
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear().toString());
   const [currentSemester, setCurrentSemester] = useState(new Date().getMonth() < 6 ? '1' : '2');
@@ -32,6 +34,16 @@ export default function SubmitProof() {
       setCurrentSemester(s.current_semester);
     }).catch(() => {});
   }, []);
+
+  const clearForm = () => {
+    setAmount('');
+    setRefNumber('');
+    setPhone('');
+    setNotes('');
+    setImageUri(null);
+    setImageBase64(null);
+    setMethod('Mobile Money');
+  };
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -85,9 +97,8 @@ export default function SubmitProof() {
       if (imageBase64) proofData.proof_image_url = `data:image/jpeg;base64,${imageBase64}`;
 
       await api.submitProof(proofData);
-      Alert.alert('Submitted', 'Your proof of payment has been submitted for review.', [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
+      clearForm();
+      setToastVisible(true);
     } catch (e: any) {
       Alert.alert('Error', e.message || 'Failed to submit proof');
     } finally {
@@ -109,8 +120,15 @@ export default function SubmitProof() {
   };
 
   return (
+    <View style={{ flex: 1, backgroundColor: theme.colors.bg }}>
+      <Toast
+        message="Proof submitted for review!"
+        type="success"
+        visible={toastVisible}
+        onDone={() => setToastVisible(false)}
+      />
     <ScrollView
-      style={{ flex: 1, backgroundColor: theme.colors.bg }}
+      style={{ flex: 1 }}
       contentContainerStyle={{ padding: theme.spacing.xxl, paddingBottom: theme.spacing.huge * 2 }}
     >
       {/* Header */}
@@ -384,5 +402,6 @@ export default function SubmitProof() {
         Your submission will be reviewed by an admin.{'\n'}You will receive a notification once approved.
       </Text>
     </ScrollView>
+    </View>
   );
 }

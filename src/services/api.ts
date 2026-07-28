@@ -15,7 +15,31 @@ import {
   AdminUser,
 } from '@/types';
 
-const BASE = 'http://localhost:3002/api/v1';
+const DEFAULT_BASE = 'http://localhost:3002/api/v1';
+
+// Allow runtime server URL override via AsyncStorage, fallback to env, fallback to localhost
+let _runtimeBase: string | null = null;
+
+export async function getBaseUrl(): Promise<string> {
+  if (_runtimeBase) return _runtimeBase;
+  try {
+    const stored = await AsyncStorage.getItem('infotess_server_url');
+    if (stored) { _runtimeBase = stored; return stored; }
+  } catch {}
+  const envUrl = (typeof process !== 'undefined' && (process as any).env?.EXPO_PUBLIC_API_BASE_URL) || '';
+  return envUrl || DEFAULT_BASE;
+}
+
+export async function setServerUrl(url: string): Promise<void> {
+  const clean = url.replace(/\/+$/, '');
+  _runtimeBase = clean;
+  await AsyncStorage.setItem('infotess_server_url', clean);
+}
+
+export async function resetServerUrl(): Promise<void> {
+  _runtimeBase = null;
+  await AsyncStorage.removeItem('infotess_server_url');
+}
 
 export class ApiError extends Error {
   status: number;
@@ -43,6 +67,7 @@ interface RequestOptions extends RequestInit {
 
 async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   const { cacheKey, allowOffline, offlineFallback, ...fetchOpts } = opts;
+  const BASE = await getBaseUrl();
   const token = await storage.getToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -383,6 +408,7 @@ export async function syncPendingOperations(): Promise<{ synced: number; failed:
   for (const op of pending) {
     try {
       const token = await storage.getToken();
+      const BASE = await getBaseUrl();
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         Accept: 'application/json',

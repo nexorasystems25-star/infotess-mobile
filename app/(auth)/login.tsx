@@ -6,6 +6,9 @@ import {
   Text,
   View,
   Alert,
+  TextInput,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,6 +18,7 @@ import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/context/AuthContext';
 import { useThemeContext } from '@/context/ThemeContext';
 import { Field, PrimaryButton, GhostButton } from '@/components/ui';
+import { getBaseUrl, setServerUrl, resetServerUrl } from '@/services/api';
 
 export default function Login() {
   const router = useRouter();
@@ -24,6 +28,13 @@ export default function Login() {
   const [indexNumber, setIndexNumber] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [serverVisible, setServerVisible] = useState(false);
+  const [serverUrl, setServerUrlState] = useState('');
+  const [currentServerUrl, setCurrentServerUrl] = useState('');
+
+  useEffect(() => {
+    getBaseUrl().then(setCurrentServerUrl);
+  }, []);
 
   useEffect(() => {
     if (user && !loading) {
@@ -65,6 +76,13 @@ export default function Login() {
             </View>
             <Text style={theme.typography.display}>INFOTESS</Text>
             <Text style={[theme.typography.small, { color: theme.colors.textDim, marginTop: 6, letterSpacing: 2 }]}>SCHOOL DUES MANAGEMENT SYSTEM</Text>
+            {/* Server config gear */}
+            <Pressable
+              onPress={() => { setServerUrlState(currentServerUrl); setServerVisible(true); }}
+              style={{ position: 'absolute', top: 0, right: 0, padding: 8 }}
+            >
+              <Ionicons name="settings-outline" size={20} color={theme.colors.textMuted} />
+            </Pressable>
           </View>
 
           {/* Toggle */}
@@ -121,6 +139,76 @@ export default function Login() {
           )}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Server URL Config Modal */}
+      <Modal visible={serverVisible} transparent animationType="fade">
+        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 24 }} onPress={() => setServerVisible(false)}>
+          <Pressable style={{ backgroundColor: theme.colors.surface, borderRadius: theme.radii.lg, padding: theme.spacing.xl, width: '100%', maxWidth: 400 }} onPress={() => {}}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.spacing.lg }}>
+              <Text style={[theme.typography.h1, { fontSize: 18 }]}>Server URL</Text>
+              <Pressable onPress={() => setServerVisible(false)}>
+                <Ionicons name="close" size={22} color={theme.colors.textDim} />
+              </Pressable>
+            </View>
+
+            <Text style={[theme.typography.small, { color: theme.colors.textDim, marginBottom: theme.spacing.sm }]}>
+              Current: {currentServerUrl}
+            </Text>
+
+            <TextInput
+              value={serverUrl}
+              onChangeText={setServerUrlState}
+              placeholder="http://192.168.x.x:3002/api/v1"
+              placeholderTextColor={theme.colors.textMuted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={{
+                backgroundColor: theme.isDark ? '#1e1e2e' : '#f5f5f8',
+                borderRadius: theme.radii.md,
+                borderWidth: 1,
+                borderColor: theme.isDark ? '#2a2a3e' : '#e0e0e6',
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                color: theme.colors.text,
+                fontSize: 14,
+                marginBottom: theme.spacing.md,
+              }}
+            />
+
+            <Text style={[theme.typography.small, { color: theme.colors.textMuted, marginBottom: theme.spacing.lg, lineHeight: 18 }]}>
+              Enter your computer's IP address.{'\n'}Find it with: ipconfig (Windows) or ifconfig (Mac)
+            </Text>
+
+            <View style={{ flexDirection: 'row', gap: theme.spacing.md }}>
+              <Pressable
+                onPress={async () => {
+                  await resetServerUrl();
+                  const fresh = await getBaseUrl();
+                  setCurrentServerUrl(fresh);
+                  setServerVisible(false);
+                  Alert.alert('Reset', 'Server URL reset to default.');
+                }}
+                style={{ flex: 1, paddingVertical: 12, borderRadius: theme.radii.md, borderWidth: 1, borderColor: theme.colors.danger, alignItems: 'center' }}
+              >
+                <Text style={{ color: theme.colors.danger, fontWeight: '600' }}>Reset</Text>
+              </Pressable>
+              <Pressable
+                onPress={async () => {
+                  if (!serverUrl.trim()) return Alert.alert('Error', 'Enter a server URL');
+                  const clean = serverUrl.trim().replace(/\/+$/, '');
+                  await setServerUrl(clean);
+                  setCurrentServerUrl(clean);
+                  setServerVisible(false);
+                  Alert.alert('Saved', `Server URL set to:\n${clean}\n\nRestart the app for changes to take effect.`);
+                }}
+                style={{ flex: 1, paddingVertical: 12, borderRadius: theme.radii.md, backgroundColor: theme.colors.primary, alignItems: 'center' }}
+              >
+                <Text style={{ color: '#00140D', fontWeight: '700' }}>Save</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </LinearGradient>
   );
 }

@@ -12,4 +12,12 @@ export const config = {
   supabaseUrl: process.env.SUPABASE_URL || '',
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY || '',
   supabaseServiceKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+  smtp: {
+    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    port: parseInt(process.env.SMTP_PORT || '587', 10),
+    user: process.env.SMTP_USER || '',
+    pass: process.env.SMTP_PASS || '',
+  },
+  smtpFrom: process.env.SMTP_FROM || 'nexorasystems25@gmail.com',
+  adminEmail: process.env.ADMIN_EMAIL || 'nexorasystems25@gmail.com',
 };

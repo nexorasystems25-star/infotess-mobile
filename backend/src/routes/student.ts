@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { supabase } from '../db/index.js';
 import { authenticate, requireStudent, AuthRequest } from '../middleware/auth.js';
 import { calculateStudentDues, getRequiredDuesAmount } from '../services/payments.js';
+import { notifyAdminProofSubmitted, notifyStudentProofReceived } from '../services/email.js';
 
 const router = Router();
 
@@ -212,6 +213,36 @@ router.post('/proofs', async (req: AuthRequest, res: Response) => {
     if (error) throw error;
 
     res.json({ proof });
+
+    // Send emails (fire-and-forget, don't block response)
+    (async () => {
+      try {
+        const { data: student } = await supabase
+          .from('students')
+          .select('full_name, index_number, users(email)')
+          .eq('id', req.user!.id)
+          .single();
+        const user = student?.users as any;
+        const studentEmail = user?.email || '';
+        const studentName = student?.full_name || 'Student';
+        const indexNumber = student?.index_number || '';
+        const amt = parseFloat(amount);
+
+        notifyAdminProofSubmitted({
+          studentName, indexNumber, amount: amt,
+          method: payment_method, academicYear: academic_year, semester,
+        });
+
+        if (studentEmail) {
+          notifyStudentProofReceived({
+            studentEmail, studentName, amount: amt,
+            method: payment_method, academicYear: academic_year, semester,
+          });
+        }
+      } catch (e) {
+        console.error('Email notification error:', e);
+      }
+    })();
   } catch (err: any) {
     console.error('Submit proof error:', err);
     res.status(500).json({ error: err.message || 'Failed to submit proof' });

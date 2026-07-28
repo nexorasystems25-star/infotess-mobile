@@ -20,20 +20,11 @@ export default function ProofDetail() {
   const [actionLoading, setActionLoading] = useState(false);
 
   useEffect(() => {
+    if (!id) return;
     (async () => {
       try {
-        const r = await api.adminProofs(undefined, 1);
-        const found = r.proofs.find(p => p.id === Number(id));
-        if (!found) {
-          // Try all pages
-          for (let p = 1; p <= r.total_pages; p++) {
-            const r2 = await api.adminProofs(undefined, p);
-            const f2 = r2.proofs.find(pp => pp.id === Number(id));
-            if (f2) { setProof(f2); break; }
-          }
-        } else {
-          setProof(found);
-        }
+        const r = await api.adminProof(Number(id));
+        setProof(r.proof);
       } catch (e) {
         setError(e instanceof ApiError ? e.message : 'Failed to load');
       } finally {

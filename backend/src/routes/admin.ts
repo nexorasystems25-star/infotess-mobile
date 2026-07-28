@@ -3,6 +3,7 @@ import { supabase } from '../db/index.js';
 import { authenticate, requireAdmin, AuthRequest } from '../middleware/auth.js';
 import { calculateStudentDues, createPayment, getDashboardStats, getRequiredDuesAmount } from '../services/payments.js';
 import { hashPassword } from '../services/auth.js';
+import { notifyStudentProofApproved, notifyStudentProofRejected, notifyStudentRegistered } from '../services/email.js';
 
 const router = Router();
 
@@ -352,6 +353,22 @@ router.post('/users', async (req: AuthRequest, res: Response) => {
     }
 
     res.json({ user: { id: newUser.id, email, role } });
+
+    // Send welcome email to new student (fire-and-forget)
+    if (role === 'student' && index_number && full_name) {
+      (async () => {
+        try {
+          notifyStudentRegistered({
+            studentEmail: email,
+            studentName: full_name,
+            indexNumber: index_number,
+            department: department || 'Computer Science',
+            level: level || '100',
+            password,
+          });
+        } catch (e) { console.error('Registration email error:', e); }
+      })();
+    }
   } catch (err) {
     console.error('Create user error:', err);
     res.status(500).json({ error: 'Failed to create user' });
@@ -476,6 +493,26 @@ router.get('/proofs', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// GET /admin/proofs/:id — single proof detail
+router.get('/proofs/:id', async (req: AuthRequest, res: Response) => {
+  try {
+    const proofId = parseInt(req.params.id);
+    if (!proofId) { res.status(400).json({ error: 'Proof id required' }); return; }
+
+    const { data: proof, error } = await supabase
+      .from('payment_proofs')
+      .select('*, students(full_name, index_number, department, level)')
+      .eq('id', proofId)
+      .single();
+
+    if (error || !proof) { res.status(404).json({ error: 'Proof not found' }); return; }
+    res.json({ proof });
+  } catch (err) {
+    console.error('Get proof error:', err);
+    res.status(500).json({ error: 'Failed to fetch proof' });
+  }
+});
+
 // POST /admin/proofs/:id/approve — approve proof and create payment
 router.post('/proofs/:id/approve', async (req: AuthRequest, res: Response) => {
   try {
@@ -484,7 +521,7 @@ router.post('/proofs/:id/approve', async (req: AuthRequest, res: Response) => {
 
     const { data: proof, error: fetchErr } = await supabase
       .from('payment_proofs')
-      .select('*, students(full_name, index_number)')
+      .select('*, students(full_name, index_number, users(email))')
       .eq('id', proofId)
       .single();
 
@@ -535,6 +572,25 @@ router.post('/proofs/:id/approve', async (req: AuthRequest, res: Response) => {
       proof_id: proofId,
       payment: { id: result.id, receipt_number: result.receipt_number, amount: proof.amount },
     });
+
+    // Send email (fire-and-forget)
+    (async () => {
+      try {
+        const student = proof.students as any;
+        const studentEmail = student?.users?.email || '';
+        if (studentEmail) {
+          notifyStudentProofApproved({
+            studentEmail,
+            studentName: student?.full_name || 'Student',
+            amount: proof.amount,
+            receiptNumber: result.receipt_number,
+            method: proof.payment_method,
+            academicYear: proof.academic_year,
+            semester: proof.semester,
+          });
+        }
+      } catch (e) { console.error('Email notify error:', e); }
+    })();
   } catch (err: any) {
     console.error('Approve proof error:', err);
     const status = err.message?.includes('already paid') || err.message?.includes('exceeds') ? 400 : 500;
@@ -550,7 +606,7 @@ router.post('/proofs/:id/reject', async (req: AuthRequest, res: Response) => {
 
     const { data: proof, error: fetchErr } = await supabase
       .from('payment_proofs')
-      .select('id, status, student_id, amount')
+      .select('id, status, student_id, amount, academic_year, semester, payment_method, students(full_name, users(email))')
       .eq('id', proofId)
       .single();
 
@@ -582,6 +638,24 @@ router.post('/proofs/:id/reject', async (req: AuthRequest, res: Response) => {
     });
 
     res.json({ ok: true, proof_id: proofId, status: 'rejected' });
+
+    // Send email (fire-and-forget)
+    (async () => {
+      try {
+        const student = proof.students as any;
+        const studentEmail = student?.users?.email || '';
+        if (studentEmail) {
+          notifyStudentProofRejected({
+            studentEmail,
+            studentName: student?.full_name || 'Student',
+            amount: proof.amount,
+            reason: review_notes || undefined,
+            academicYear: proof.academic_year,
+            semester: proof.semester,
+          });
+        }
+      } catch (e) { console.error('Email notify error:', e); }
+    })();
   } catch (err: any) {
     console.error('Reject proof error:', err);
     res.status(500).json({ error: err.message || 'Failed to reject proof' });

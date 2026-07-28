@@ -345,6 +345,8 @@ export const api = {
       allowOffline: true,
     });
   },
+  adminProof: (proofId: number) =>
+    request<{ proof: PaymentProof }>(`/admin/proofs/${proofId}`),
   approveProof: (proofId: number, review_notes?: string) =>
     request<{ ok: boolean; payment: { id: number; receipt_number: string; amount: number } }>(
       `/admin/proofs/${proofId}/approve`,

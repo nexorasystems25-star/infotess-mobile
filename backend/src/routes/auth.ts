@@ -1,12 +1,12 @@
 import { Router, Request, Response } from 'express';
-import db from '../db/index.js';
+import { supabase } from '../db/index.js';
 import { generateTokens, verifyPassword, verifyRefreshToken } from '../services/auth.js';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
 
 // POST /auth/login
-router.post('/login', (req: Request, res: Response) => {
+router.post('/login', async (req: Request, res: Response) => {
   try {
     const { index_number, email, password, role } = req.body;
     const isStudent = role === 'student';
@@ -17,14 +17,19 @@ router.post('/login', (req: Request, res: Response) => {
         return;
       }
 
-      const student = db.prepare(
-        `SELECT s.id, s.index_number, s.full_name, s.department, s.level, s.phone_number, u.email, u.password_hash
-         FROM students s
-         JOIN users u ON s.user_id = u.id
-         WHERE s.index_number = ? AND u.role = 'student' AND u.status = 'active'`
-      ).get(index_number) as any;
+      const { data: student, error } = await supabase
+        .from('students')
+        .select('id, index_number, full_name, department, level, phone_number, user_id, users!inner(email, password_hash, role, status)')
+        .eq('index_number', index_number)
+        .single();
 
-      if (!student || !verifyPassword(password, student.password_hash)) {
+      if (error || !student) {
+        res.status(401).json({ error: 'Invalid credentials' });
+        return;
+      }
+
+      const user = student.users as any;
+      if (user.role !== 'student' || user.status !== 'active' || !verifyPassword(password, user.password_hash)) {
         res.status(401).json({ error: 'Invalid credentials' });
         return;
       }
@@ -34,7 +39,7 @@ router.post('/login', (req: Request, res: Response) => {
         role: 'student',
         type: 'student',
         name: student.full_name,
-        email: student.email,
+        email: user.email,
         index_number: student.index_number,
       });
 
@@ -42,7 +47,7 @@ router.post('/login', (req: Request, res: Response) => {
         ok: true,
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token,
-        user: { type: 'student', student_id: student.id, full_name: student.full_name, index_number: student.index_number, department: student.department, level: student.level, email: student.email },
+        user: { type: 'student', student_id: student.id, full_name: student.full_name, index_number: student.index_number, department: student.department, level: student.level, email: user.email },
       });
     } else {
       // Admin login
@@ -51,11 +56,15 @@ router.post('/login', (req: Request, res: Response) => {
         return;
       }
 
-      const admin = db.prepare(
-        "SELECT id, email, role, password_hash FROM users WHERE email = ? AND role IN ('admin', 'super_admin') AND status = 'active'"
-      ).get(email) as any;
+      const { data: admin, error } = await supabase
+        .from('users')
+        .select('id, email, role, password_hash')
+        .eq('email', email)
+        .in('role', ['admin', 'super_admin'])
+        .eq('status', 'active')
+        .single();
 
-      if (!admin || !verifyPassword(password, admin.password_hash)) {
+      if (error || !admin || !verifyPassword(password, admin.password_hash)) {
         res.status(401).json({ error: 'Invalid credentials' });
         return;
       }
@@ -82,20 +91,31 @@ router.post('/login', (req: Request, res: Response) => {
 });
 
 // GET /auth/me
-router.get('/me', authenticate, (req: AuthRequest, res: Response) => {
+router.get('/me', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     if (req.user?.type === 'student') {
-      const student = db.prepare(
-        `SELECT s.id, s.index_number, s.full_name, s.department, s.level, s.phone_number, u.email
-         FROM students s JOIN users u ON s.user_id = u.id WHERE s.id = ?`
-      ).get(req.user.id) as any;
+      const { data: student } = await supabase
+        .from('students')
+        .select('id, index_number, full_name, department, level, phone_number, users(email)')
+        .eq('id', req.user.id)
+        .single();
 
+      if (!student) { res.status(404).json({ error: 'Student not found' }); return; }
+
+      const user = student.users as any;
       res.json({
         ok: true,
-        user: { type: 'student', student_id: student.id, full_name: student.full_name, index_number: student.index_number, department: student.department, level: student.level, email: student.email },
+        user: { type: 'student', student_id: student.id, full_name: student.full_name, index_number: student.index_number, department: student.department, level: student.level, email: user?.email },
       });
     } else {
-      const admin = db.prepare("SELECT id, email, role FROM users WHERE id = ?").get(req.user!.id) as any;
+      const { data: admin } = await supabase
+        .from('users')
+        .select('id, email, role')
+        .eq('id', req.user!.id)
+        .single();
+
+      if (!admin) { res.status(404).json({ error: 'Admin not found' }); return; }
+
       res.json({
         ok: true,
         user: { type: 'admin', admin_id: admin.id, name: admin.email.split('@')[0], email: admin.email, role: admin.role },
@@ -113,23 +133,32 @@ router.post('/logout', authenticate, (_req: AuthRequest, res: Response) => {
 
 // POST /auth/forgot
 router.post('/forgot', (req: Request, res: Response) => {
-  // In production, this would send an email. For dev, just return success.
   const { email } = req.body;
   if (!email) { res.status(400).json({ error: 'Email required' }); return; }
   res.json({ ok: true, message: 'If the email exists, a reset link has been sent.' });
 });
 
 // POST /auth/refresh
-router.post('/refresh', (req: Request, res: Response) => {
+router.post('/refresh', async (req: Request, res: Response) => {
   try {
     const { refresh_token } = req.body;
     if (!refresh_token) { res.status(400).json({ error: 'refresh_token required' }); return; }
 
     const decoded = verifyRefreshToken(refresh_token);
-    const user = db.prepare("SELECT id, email, role FROM users WHERE id = ?").get(decoded.id) as any;
+
+    const { data: user } = await supabase
+      .from('users')
+      .select('id, email, role')
+      .eq('id', decoded.id)
+      .single();
+
     if (!user) { res.status(401).json({ error: 'User not found' }); return; }
 
-    const student = db.prepare("SELECT s.id, s.index_number, s.full_name, s.department, s.level FROM students s WHERE s.user_id = ?").get(user.id) as any;
+    const { data: student } = await supabase
+      .from('students')
+      .select('id, index_number, full_name, department, level')
+      .eq('user_id', user.id)
+      .single();
 
     const tokens = generateTokens({
       id: user.id,

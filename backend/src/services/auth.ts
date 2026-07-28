@@ -1,3 +1,4 @@
+import { supabase } from '../db/index.js';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { config } from '../config.js';
@@ -20,8 +21,8 @@ export function verifyPassword(password: string, hash: string): boolean {
 }
 
 export function generateTokens(payload: TokenPayload): { access_token: string; refresh_token: string } {
-  const access_token = jwt.sign(payload, config.jwtSecret, { expiresIn: config.accessTokenExpiry });
-  const refresh_token = jwt.sign({ id: payload.id, role: payload.role }, config.jwtRefreshSecret, { expiresIn: config.refreshTokenExpiry });
+  const access_token = jwt.sign(payload as object, config.jwtSecret, { expiresIn: config.accessTokenExpiry } as jwt.SignOptions);
+  const refresh_token = jwt.sign({ id: payload.id, role: payload.role }, config.jwtRefreshSecret, { expiresIn: config.refreshTokenExpiry } as jwt.SignOptions);
   return { access_token, refresh_token };
 }
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -20,8 +20,8 @@ export default function RecordPayment() {
   const { theme } = useThemeContext();
   const [studentId, setStudentId] = useState('');
   const [amount, setAmount] = useState('');
-  const [academicYear, setAcademicYear] = useState('2025/2026');
-  const [semester, setSemester] = useState('Semester 1');
+  const [academicYear, setAcademicYear] = useState('');
+  const [semester, setSemester] = useState('');
   const [method, setMethod] = useState<'Cash' | 'Mobile Money' | 'Bank Transfer'>('Cash');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [busy, setBusy] = useState(false);
@@ -29,6 +29,13 @@ export default function RecordPayment() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [transactionId, setTransactionId] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
+
+  useEffect(() => {
+    api.getSettings().then((r) => {
+      if (r.settings.current_academic_year) setAcademicYear(r.settings.current_academic_year);
+      if (r.settings.current_semester) setSemester(r.settings.current_semester);
+    }).catch(() => {});
+  }, []);
 
   const methods: { key: typeof method; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
     { key: 'Mobile Money', label: 'MoMo', icon: 'phone-portrait' },
@@ -138,7 +145,32 @@ export default function RecordPayment() {
         )}
 
         <Field label="Academic year" value={academicYear} onChangeText={setAcademicYear} placeholder="2025/2026" icon="school" />
-        <Field label="Semester" value={semester} onChangeText={setSemester} placeholder="Semester 1" icon="calendar" />
+
+        <View style={{ marginBottom: theme.spacing.md }}>
+          <Text style={[theme.typography.small, { color: theme.colors.textDim, marginBottom: theme.spacing.xs }]}>Semester</Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {['1', '2'].map((s) => {
+              const active = semester === s;
+              return (
+                <View
+                  key={s}
+                  onTouchEnd={() => setSemester(s)}
+                  style={{
+                    flex: 1, paddingVertical: 14, alignItems: 'center',
+                    borderRadius: theme.radii.md, flexDirection: 'row', justifyContent: 'center', gap: 6,
+                    backgroundColor: active ? theme.colors.primary : theme.colors.surface2,
+                    borderWidth: 1, borderColor: active ? theme.colors.primary : theme.colors.hairline,
+                  }}
+                >
+                  <Ionicons name={s === '1' ? 'flag' : 'flag-outline'} size={16} color={active ? '#00140D' : theme.colors.textDim} />
+                  <Text style={{ fontWeight: '700', fontSize: 13, color: active ? '#00140D' : theme.colors.textDim }}>
+                    Semester {s}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        </View>
 
         <Field label="Payment date" value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" icon="calendar-outline" />
 

@@ -1,4 +1,4 @@
-import db from '../db/index.js';
+import { supabase } from '../db/index.js';
 import { v4 as uuidv4 } from 'uuid';
 
 export function generateReceiptNumber(): string {
@@ -7,22 +7,31 @@ export function generateReceiptNumber(): string {
   return `SDMS-${year}-${random}`;
 }
 
-export function getRequiredDuesAmount(): number {
-  const row = db.prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'annual_dues_amount'").get() as { setting_value: string } | undefined;
-  return row ? parseFloat(row.setting_value) : 200.00;
+export async function getRequiredDuesAmount(): Promise<number> {
+  const { data } = await supabase
+    .from('system_settings')
+    .select('setting_value')
+    .eq('setting_key', 'annual_dues_amount')
+    .single();
+  return data ? parseFloat(data.setting_value) : 200.00;
 }
 
-export function calculateStudentDues(studentId: number, academicYear: string) {
-  const required = getRequiredDuesAmount();
+export async function calculateStudentDues(studentId: number, academicYear: string) {
+  const required = await getRequiredDuesAmount();
 
-  const paidRow = db.prepare("SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE student_id = ? AND academic_year = ?").get(studentId, academicYear) as { total: number };
-  const paid = paidRow.total;
+  const { data } = await supabase
+    .from('payments')
+    .select('amount')
+    .eq('student_id', studentId)
+    .eq('academic_year', academicYear);
+
+  const paid = (data || []).reduce((sum, p) => sum + Number(p.amount), 0);
   const balance = Math.max(0, required - paid);
 
   return { required, paid, balance, academic_year: academicYear };
 }
 
-export function createPayment(data: {
+export async function createPayment(data: {
   student_id: number;
   amount: number;
   academic_year: string;
@@ -34,9 +43,15 @@ export function createPayment(data: {
   transaction_id?: string;
   account_number?: string;
 }) {
-  const required = getRequiredDuesAmount();
-  const paidRow = db.prepare("SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE student_id = ? AND academic_year = ?").get(data.student_id, data.academic_year) as { total: number };
-  const alreadyPaid = paidRow.total;
+  const required = await getRequiredDuesAmount();
+
+  const { data: existingPayments } = await supabase
+    .from('payments')
+    .select('amount')
+    .eq('student_id', data.student_id)
+    .eq('academic_year', data.academic_year);
+
+  const alreadyPaid = (existingPayments || []).reduce((sum, p) => sum + Number(p.amount), 0);
   const remaining = Math.max(0, required - alreadyPaid);
 
   if (remaining <= 0) {
@@ -49,56 +64,76 @@ export function createPayment(data: {
 
   const receiptNumber = generateReceiptNumber();
 
-  const stmt = db.prepare(
-    `INSERT INTO payments (student_id, amount, academic_year, semester, payment_method, payment_date, receipt_number, recorded_by, phone_number, transaction_id, account_number)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  );
+  const { data: payment, error: payErr } = await supabase
+    .from('payments')
+    .insert({
+      student_id: data.student_id,
+      amount: data.amount,
+      academic_year: data.academic_year,
+      semester: data.semester,
+      payment_method: data.payment_method,
+      payment_date: data.payment_date,
+      receipt_number: receiptNumber,
+      recorded_by: data.recorded_by,
+      phone_number: data.phone_number || null,
+      transaction_id: data.transaction_id || null,
+      account_number: data.account_number || null,
+    })
+    .select('id')
+    .single();
 
-  const info = stmt.run(
-    data.student_id,
-    data.amount,
-    data.academic_year,
-    data.semester,
-    data.payment_method,
-    data.payment_date,
-    receiptNumber,
-    data.recorded_by,
-    data.phone_number || null,
-    data.transaction_id || null,
-    data.account_number || null
-  );
+  if (payErr) throw payErr;
 
   const verificationHash = Buffer.from(receiptNumber + ':' + Date.now()).toString('base64url');
 
-  db.prepare("INSERT INTO receipts (payment_id, receipt_file_path, verification_hash) VALUES (?, ?, ?)").run(
-    info.lastInsertRowid as number,
-    `/receipts/${receiptNumber}.pdf`,
-    verificationHash
-  );
+  await supabase.from('receipts').insert({
+    payment_id: payment.id,
+    receipt_file_path: `/receipts/${receiptNumber}.pdf`,
+    verification_hash: verificationHash,
+  });
 
-  return { id: info.lastInsertRowid as number, receipt_number: receiptNumber, verification_hash: verificationHash };
+  return { id: payment.id, receipt_number: receiptNumber, verification_hash: verificationHash };
 }
 
-export function getDashboardStats() {
-  const totalStudents = (db.prepare("SELECT COUNT(*) as c FROM students").get() as { c: number }).c;
-  const totalPayments = (db.prepare("SELECT COUNT(*) as c FROM payments").get() as { c: number }).c;
-  const totalRevenue = (db.prepare("SELECT COALESCE(SUM(amount), 0) as t FROM payments").get() as { t: number }).t;
+export async function getDashboardStats() {
+  const { count: totalStudents } = await supabase
+    .from('students')
+    .select('*', { count: 'exact', head: true });
+
+  const { count: totalPayments } = await supabase
+    .from('payments')
+    .select('*', { count: 'exact', head: true });
+
+  const { data: allPayments } = await supabase.from('payments').select('amount');
+  const totalRevenue = (allPayments || []).reduce((sum, p) => sum + Number(p.amount), 0);
 
   const currentYear = new Date().getFullYear().toString();
-  const requiredDues = getRequiredDuesAmount();
-  const compliantStudents = db.prepare(
-    "SELECT COUNT(DISTINCT student_id) as c FROM payments WHERE academic_year = ? GROUP BY student_id HAVING SUM(amount) >= ?"
-  ).all(currentYear, requiredDues) as { c: number }[];
-  const studentsWithFullPayment = compliantStudents.length;
-  const complianceRate = totalStudents > 0 ? Math.round((studentsWithFullPayment / totalStudents) * 100) : 0;
+  const requiredDues = await getRequiredDuesAmount();
 
-  const recentPayments = db.prepare(
-    `SELECT p.*, s.full_name, s.index_number
-     FROM payments p
-     JOIN students s ON s.id = p.student_id
-     ORDER BY p.created_at DESC
-     LIMIT 10`
-  ).all();
+  const { data: yearPayments } = await supabase
+    .from('payments')
+    .select('student_id, amount')
+    .eq('academic_year', currentYear);
 
-  return { total_students: totalStudents, total_payments: totalPayments, total_revenue: totalRevenue, compliance_rate: complianceRate, recent_payments: recentPayments };
+  // Group by student and check who paid full
+  const studentTotals: Record<number, number> = {};
+  (yearPayments || []).forEach(p => {
+    studentTotals[p.student_id] = (studentTotals[p.student_id] || 0) + Number(p.amount);
+  });
+  const studentsWithFullPayment = Object.values(studentTotals).filter(total => total >= requiredDues).length;
+  const complianceRate = (totalStudents || 0) > 0 ? Math.round((studentsWithFullPayment / (totalStudents || 1)) * 100) : 0;
+
+  const { data: recentPayments } = await supabase
+    .from('payments')
+    .select('*, students(full_name, index_number)')
+    .order('created_at', { ascending: false })
+    .limit(10);
+
+  return {
+    total_students: totalStudents || 0,
+    total_payments: totalPayments || 0,
+    total_revenue: totalRevenue,
+    compliance_rate: complianceRate,
+    recent_payments: recentPayments || [],
+  };
 }

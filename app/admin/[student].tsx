@@ -7,6 +7,7 @@ import { api, ApiError } from '@/services/api';
 import { StudentDues, Payment } from '@/types';
 import { Card, Badge, SectionHeader, Stat, GhostButton } from '@/components/ui';
 import { useThemeContext } from '@/context/ThemeContext';
+import { ReceiptModal, ReceiptParams } from '@/components/ReceiptModal';
 
 function fmtGHS(n: number | string) { return `GH₵ ${Number(n || 0).toFixed(2)}`; }
 
@@ -19,6 +20,8 @@ export default function StudentDetail() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  const [receiptVisible, setReceiptVisible] = useState(false);
+  const [receiptParams, setReceiptParams] = useState<ReceiptParams | null>(null);
 
   const studentId = Number(studentIdParam);
 
@@ -39,23 +42,21 @@ export default function StudentDetail() {
     try {
       const r = await api.getReceipt(paymentId, 'admin');
       const rc = r.receipt;
-      router.push({
-        pathname: '/admin/receipt',
-        params: {
-          receipt_number: rc.receipt_number,
-          payment_date: rc.payment_date,
-          payment_method: rc.payment_method,
-          amount: String(rc.amount),
-          academic_year: rc.academic_year,
-          semester: rc.semester,
-          full_name: rc.full_name,
-          index_number: rc.index_number,
-          department: rc.department,
-          level: rc.level,
-          total_paid: String(rc.total_paid),
-          required: String(rc.required),
-        },
+      setReceiptParams({
+        receipt_number: rc.receipt_number,
+        payment_date: rc.payment_date,
+        payment_method: rc.payment_method,
+        amount: String(rc.amount),
+        academic_year: rc.academic_year,
+        semester: rc.semester,
+        full_name: rc.full_name,
+        index_number: rc.index_number,
+        department: rc.department,
+        level: rc.level,
+        total_paid: String(rc.total_paid),
+        required: String(rc.required),
       });
+      setReceiptVisible(true);
     } catch (e: any) {
       Alert.alert('Error', e.message || 'Failed to load receipt');
     } finally { setDownloadingId(null); }
@@ -136,7 +137,7 @@ export default function StudentDetail() {
       {/* Payment history */}
       <SectionHeader title="Payment history" action={`${dues?.payments?.length ?? 0} payments`} />
       {(dues?.payments ?? []).map((p) => (
-        <Card key={p.payment_id ?? p.id} elevation="soft" style={{ marginBottom: theme.spacing.md }}>
+        <Card key={p.id} elevation="soft" style={{ marginBottom: theme.spacing.md }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <View style={{ flex: 1 }}>
               <Text style={[theme.typography.h3, { color: theme.colors.primary }]}>{fmtGHS(p.amount)}</Text>
@@ -146,8 +147,8 @@ export default function StudentDetail() {
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: theme.spacing.sm, borderTopWidth: 1, borderTopColor: theme.colors.hairline, paddingTop: theme.spacing.sm }}>
             <GhostButton
-              title={downloadingId === (p.payment_id ?? p.id) ? 'Opening...' : 'Receipt'}
-              onPress={() => handleReceipt(p.payment_id ?? p.id)}
+              title={downloadingId === p.id ? 'Opening...' : 'Receipt'}
+              onPress={() => handleReceipt(p.id)}
               icon="document-text-outline"
             />
           </View>
@@ -156,6 +157,13 @@ export default function StudentDetail() {
       {dues && dues.payments.length === 0 ? (
         <Card><Text style={[theme.typography.body, { color: theme.colors.textDim }]}>No payments recorded for this semester.</Text></Card>
       ) : null}
+
+      <ReceiptModal
+        visible={receiptVisible}
+        onClose={() => setReceiptVisible(false)}
+        params={receiptParams || { receipt_number: '', payment_date: '', payment_method: '', amount: '0', academic_year: '', semester: '', full_name: '', index_number: '', department: '', level: '', total_paid: '0', required: '0' }}
+        isDark={theme.isDark}
+      />
     </ScrollView>
   );
 }

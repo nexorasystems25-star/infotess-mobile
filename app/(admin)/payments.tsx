@@ -8,6 +8,7 @@ import { api, ApiError } from '@/services/api';
 import { Payment } from '@/types';
 import { Card, Badge, SectionHeader, PrimaryButton, GhostButton } from '@/components/ui';
 import { useThemeContext } from '@/context/ThemeContext';
+import { ReceiptModal, ReceiptParams } from '@/components/ReceiptModal';
 
 interface MethodSummary {
   method: string;
@@ -48,29 +49,29 @@ export default function AdminPayments() {
   );
 
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  const [receiptVisible, setReceiptVisible] = useState(false);
+  const [receiptParams, setReceiptParams] = useState<ReceiptParams | null>(null);
 
   const handleReceipt = async (paymentId: number) => {
     setDownloadingId(paymentId);
     try {
       const r = await api.getReceipt(paymentId, 'admin');
       const rc = r.receipt;
-      router.push({
-        pathname: '/admin/receipt',
-        params: {
-          receipt_number: rc.receipt_number,
-          payment_date: rc.payment_date,
-          payment_method: rc.payment_method,
-          amount: String(rc.amount),
-          academic_year: rc.academic_year,
-          semester: rc.semester,
-          full_name: rc.full_name,
-          index_number: rc.index_number,
-          department: rc.department,
-          level: rc.level,
-          total_paid: String(rc.total_paid),
-          required: String(rc.required),
-        },
+      setReceiptParams({
+        receipt_number: rc.receipt_number,
+        payment_date: rc.payment_date,
+        payment_method: rc.payment_method,
+        amount: String(rc.amount),
+        academic_year: rc.academic_year,
+        semester: rc.semester,
+        full_name: rc.full_name,
+        index_number: rc.index_number,
+        department: rc.department,
+        level: rc.level,
+        total_paid: String(rc.total_paid),
+        required: String(rc.required),
       });
+      setReceiptVisible(true);
     } catch (e: any) {
       Alert.alert('Error', e.message || 'Failed to load receipt');
     } finally { setDownloadingId(null); }
@@ -100,7 +101,7 @@ export default function AdminPayments() {
 
       <FlatList
         data={payments}
-        keyExtractor={(i) => String(i.id ?? i.payment_id)}
+        keyExtractor={(i) => String(i.id)}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load()} tintColor={theme.colors.primary} />}
         contentContainerStyle={{ padding: theme.spacing.xxl, paddingBottom: theme.spacing.huge * 2 }}
         ListHeaderComponent={
@@ -146,9 +147,9 @@ export default function AdminPayments() {
           <Card elevation="soft">
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <View style={{ flex: 1 }}>
-                <Text style={[theme.typography.bodyMedium, { color: theme.colors.text }]}>{(item as any).full_name ?? item.student?.full_name ?? '—'}</Text>
+                <Text style={[theme.typography.bodyMedium, { color: theme.colors.text }]}>{(item as any).students?.full_name ?? (item as any).full_name ?? '—'}</Text>
                 <Text style={[theme.typography.small, { color: theme.colors.textDim, marginTop: 2 }]}>
-                  {(item as any).index_number ?? item.student?.index_number} · {item.payment_method} · {item.payment_date}
+                  {(item as any).students?.index_number ?? (item as any).index_number} · {item.payment_method} · {item.payment_date}
                 </Text>
               </View>
               <View style={{ alignItems: 'flex-end' }}>
@@ -158,13 +159,19 @@ export default function AdminPayments() {
             </View>
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: theme.spacing.sm, borderTopWidth: 1, borderTopColor: theme.colors.hairline, paddingTop: theme.spacing.sm }}>
               <GhostButton
-                title={downloadingId === (item.id ?? item.payment_id) ? 'Opening...' : 'Receipt'}
-                onPress={() => handleReceipt(item.id ?? item.payment_id)}
+                  title={downloadingId === item.id ? 'Opening...' : 'Receipt'}
+                  onPress={() => handleReceipt(item.id)}
                 icon="document-text-outline"
               />
             </View>
           </Card>
         )}
+      />
+      <ReceiptModal
+        visible={receiptVisible}
+        onClose={() => setReceiptVisible(false)}
+        params={receiptParams || { receipt_number: '', payment_date: '', payment_method: '', amount: '0', academic_year: '', semester: '', full_name: '', index_number: '', department: '', level: '', total_paid: '0', required: '0' }}
+        isDark={theme.isDark}
       />
     </View>
   );

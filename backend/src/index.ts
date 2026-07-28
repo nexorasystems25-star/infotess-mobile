@@ -1,74 +1,54 @@
 import express from 'express';
 import cors from 'cors';
 import { config } from './config.js';
-import { initDb, db } from './db/index.js';
 import authRoutes from './routes/auth.js';
 import studentRoutes from './routes/student.js';
 import adminRoutes from './routes/admin.js';
 import publicRoutes from './routes/public.js';
-import { createSchema } from './db/schema.js';
 
-// Run init + seed if DB doesn't exist
-async function bootstrap() {
-  await initDb();
-  createSchema();
+const app = express();
 
-  // Auto-seed if empty
-  const result = db.prepare("SELECT COUNT(*) as c FROM users").get() as any;
-  if (!result || result.c === 0) {
-    console.log('Empty database detected — running seed...');
-    const { execSync } = await import('child_process');
-    execSync('npx tsx src/db/seed.ts', { cwd: process.cwd(), stdio: 'inherit' });
-  }
+// Middleware
+app.use(cors({ origin: config.corsOrigin, credentials: true }));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-  const app = express();
+// Request logging (dev)
+app.use((req, _res, next) => {
+  console.log(`${new Date().toISOString()} ${req.method} ${req.path}`);
+  next();
+});
 
-  // Middleware
-  app.use(cors({ origin: config.corsOrigin, credentials: true }));
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
+// Health check
+app.get('/api/v1/health', (_req, res) => {
+  res.json({ ok: true, service: 'infotess-sdms-api', timestamp: new Date().toISOString() });
+});
 
-  // Request logging (dev)
-  app.use((req, _res, next) => {
-    console.log(`${new Date().toISOString()} ${req.method} ${req.path}`);
-    next();
-  });
+// Routes
+app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/student', studentRoutes);
+app.use('/api/v1/admin', adminRoutes);
+app.use('/api/v1', publicRoutes);
 
-  // Health check
-  app.get('/api/v1/health', (_req, res) => {
-    res.json({ ok: true, service: 'infotess-sdms-api', timestamp: new Date().toISOString() });
-  });
+// 404 handler
+app.use((_req, res) => {
+  res.status(404).json({ error: 'Endpoint not found' });
+});
 
-  // Routes
-  app.use('/api/v1/auth', authRoutes);
-  app.use('/api/v1/student', studentRoutes);
-  app.use('/api/v1/admin', adminRoutes);
-  app.use('/api/v1', publicRoutes);
+// Error handler
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ error: 'Internal server error' });
+});
 
-  // 404 handler
-  app.use((_req, res) => {
-    res.status(404).json({ error: 'Endpoint not found' });
-  });
-
-  // Error handler
-  app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-    console.error('Unhandled error:', err);
-    res.status(500).json({ error: 'Internal server error' });
-  });
-
-  // Start server
-  app.listen(config.port, '0.0.0.0', () => {
-    console.log(`\n🚀 INFOTESS SDMS API running on http://localhost:${config.port}`);
-    console.log(`   Health: http://localhost:${config.port}/api/v1/health`);
-    console.log(`   Auth:   http://localhost:${config.port}/api/v1/auth/login`);
-    console.log(`\n   Test accounts:`);
-    console.log(`     Admin:    admin@infotess.com / admin123`);
-    console.log(`     Student:  student@infotess.com / student123`);
-    console.log(`     Index:    INF/2024/001\n`);
-  });
-}
-
-bootstrap().catch(err => {
-  console.error('Failed to start server:', err);
-  process.exit(1);
+// Start server
+app.listen(config.port, '0.0.0.0', () => {
+  console.log(`\n🚀 INFOTESS SDMS API running on http://localhost:${config.port}`);
+  console.log(`   Health: http://localhost:${config.port}/api/v1/health`);
+  console.log(`   Auth:   http://localhost:${config.port}/api/v1/auth/login`);
+  console.log(`   DB:     Supabase (${config.supabaseUrl})`);
+  console.log(`\nTest accounts:`);
+  console.log(`  Admin:    admin@infotess.com / admin123`);
+  console.log(`  Student:  student@infotess.com / student123`);
+  console.log(`  Index:    INF/2024/001\n`);
 });

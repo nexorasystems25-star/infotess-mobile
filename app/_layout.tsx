@@ -1,6 +1,8 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { AuthProvider } from '@/context/AuthContext';
+import { NetworkProvider } from '@/context/NetworkContext';
+import { OfflineBanner } from '@/components/OfflineBanner';
 import { ThemeProvider, useThemeContext } from '@/context/ThemeContext';
 
 function RootNavigator() {
@@ -8,6 +10,7 @@ function RootNavigator() {
   return (
     <>
       <StatusBar style={theme.isDark ? 'light' : 'dark'} />
+      <OfflineBanner />
       <Stack
         screenOptions={{
           headerShown: false,
@@ -31,9 +34,11 @@ function RootNavigator() {
 export default function RootLayout() {
   return (
     <ThemeProvider>
-      <AuthProvider>
-        <RootNavigator />
-      </AuthProvider>
+      <NetworkProvider>
+        <AuthProvider>
+          <RootNavigator />
+        </AuthProvider>
+      </NetworkProvider>
     </ThemeProvider>
   );
 }

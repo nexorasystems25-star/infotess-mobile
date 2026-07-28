@@ -1,8 +1,7 @@
 import { Router, Response } from 'express';
-import db from '../db/index.js';
+import { supabase } from '../db/index.js';
 import { authenticate, requireStudent, AuthRequest } from '../middleware/auth.js';
 import { calculateStudentDues, getRequiredDuesAmount } from '../services/payments.js';
-import { generateReceiptHTML } from '../services/receipt.js';
 
 const router = Router();
 
@@ -10,83 +9,141 @@ const router = Router();
 router.use(authenticate, requireStudent);
 
 // GET /student/profile
-router.get('/profile', (req: AuthRequest, res: Response) => {
+router.get('/profile', async (req: AuthRequest, res: Response) => {
   try {
-    const student = db.prepare(
-      `SELECT s.id, s.index_number, s.full_name, s.department, s.level, s.phone_number, u.email
-       FROM students s JOIN users u ON s.user_id = u.id WHERE s.id = ?`
-    ).get(req.user!.id) as any;
+    const { data: student } = await supabase
+      .from('students')
+      .select('id, index_number, full_name, department, level, phone_number, users(email)')
+      .eq('id', req.user!.id)
+      .single();
 
     if (!student) { res.status(404).json({ error: 'Student not found' }); return; }
 
-    res.json({ student: { id: student.id, index_number: student.index_number, full_name: student.full_name, department: student.department, level: student.level, phone_number: student.phone_number, email: student.email } });
+    const user = student.users as any;
+    res.json({ student: { id: student.id, index_number: student.index_number, full_name: student.full_name, department: student.department, level: student.level, phone_number: student.phone_number, email: user?.email } });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch profile' });
   }
 });
 
 // GET /student/dues
-router.get('/dues', (req: AuthRequest, res: Response) => {
+router.get('/dues', async (req: AuthRequest, res: Response) => {
   try {
     const currentYear = new Date().getFullYear().toString();
-    const dues = calculateStudentDues(req.user!.id, currentYear);
-    res.json({ dues: { ...dues, semester: 'All' } });
+    const dues = await calculateStudentDues(req.user!.id, currentYear);
+
+    const { data: student } = await supabase
+      .from('students')
+      .select('id, index_number, full_name, department, level, phone_number, users(email)')
+      .eq('id', req.user!.id)
+      .single();
+
+    const user = student?.users as any;
+    const studentInfo = student
+      ? { id: student.id, index_number: student.index_number, full_name: student.full_name, department: student.department, level: student.level, phone_number: student.phone_number, email: user?.email }
+      : null;
+
+    const { data: payments } = await supabase
+      .from('payments')
+      .select('id, amount, academic_year, semester, payment_date, payment_method, receipt_number, created_at')
+      .eq('student_id', req.user!.id)
+      .order('id', { ascending: false })
+      .limit(100);
+
+    res.json({
+      dues: {
+        ...dues,
+        student: studentInfo,
+        payments: payments || [],
+        semester: 'All',
+        status: dues.balance <= 0 ? 'paid' : dues.paid > 0 ? 'partially_paid' : 'unpaid',
+        total_due: dues.required,
+        total_paid: dues.paid,
+        outstanding: dues.balance,
+      },
+    });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch dues' });
   }
 });
 
 // GET /student/payments
-router.get('/payments', (req: AuthRequest, res: Response) => {
+router.get('/payments', async (req: AuthRequest, res: Response) => {
   try {
     const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 100, 1), 200);
-    const payments = db.prepare(
-      `SELECT id as payment_id, amount, academic_year, semester, payment_date, payment_method, receipt_number, created_at
-       FROM payments WHERE student_id = ? ORDER BY id DESC LIMIT ?`
-    ).all(req.user!.id, limit);
+    const { data: payments } = await supabase
+      .from('payments')
+      .select('id, amount, academic_year, semester, payment_date, payment_method, receipt_number, created_at')
+      .eq('student_id', req.user!.id)
+      .order('id', { ascending: false })
+      .limit(limit);
 
-    res.json({ payments });
+    res.json({ payments: payments || [] });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch payments' });
   }
 });
 
 // GET /student/notifications
-router.get('/notifications', (req: AuthRequest, res: Response) => {
+router.get('/notifications', async (req: AuthRequest, res: Response) => {
   try {
-    const student = db.prepare("SELECT user_id FROM students WHERE id = ?").get(req.user!.id) as any;
-    const userId = student?.user_id || req.user!.id;
-    const notifications = db.prepare(
-      `SELECT id, title, message, is_read, created_at
-       FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`
-    ).all(userId);
+    // Get user_id from student record
+    const { data: student } = await supabase
+      .from('students')
+      .select('user_id')
+      .eq('id', req.user!.id)
+      .single();
 
-    res.json({ notifications: notifications.map((n: any) => ({ ...n, is_read: !!n.is_read })) });
+    const userId = student?.user_id || req.user!.id;
+
+    const { data: notifications } = await supabase
+      .from('notifications')
+      .select('id, title, message, is_read, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    res.json({ notifications: (notifications || []).map(n => ({ ...n, is_read: !!n.is_read })) });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch notifications' });
   }
 });
 
 // GET /student/payments/:id/receipt — get receipt data as JSON
-router.get('/payments/:id/receipt', (req: AuthRequest, res: Response) => {
+router.get('/payments/:id/receipt', async (req: AuthRequest, res: Response) => {
   try {
     const paymentId = parseInt(req.params.id);
     if (!paymentId) { res.status(400).json({ error: 'Payment id required' }); return; }
 
-    const payment = db.prepare(
-      `SELECT p.id, p.student_id, p.amount, p.academic_year, p.semester, p.payment_method, p.payment_date, p.receipt_number,
-              s.full_name, s.index_number, s.department, s.level, s.phone_number,
-              r.verification_hash
-       FROM payments p
-       JOIN students s ON s.id = p.student_id
-       LEFT JOIN receipts r ON r.payment_id = p.id
-       WHERE p.id = ? AND p.student_id = ?`
-    ).get(paymentId, req.user!.id) as any;
+    const { data: payment } = await supabase
+      .from('payments')
+      .select('id, student_id, amount, academic_year, semester, payment_method, payment_date, receipt_number')
+      .eq('id', paymentId)
+      .eq('student_id', req.user!.id)
+      .single();
 
     if (!payment) { res.status(404).json({ error: 'Payment not found' }); return; }
 
-    const required = getRequiredDuesAmount();
-    const paidRow = db.prepare("SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE student_id = ? AND academic_year = ?").get(payment.student_id, payment.academic_year) as { total: number };
+    const { data: student } = await supabase
+      .from('students')
+      .select('full_name, index_number, department, level, phone_number')
+      .eq('id', payment.student_id)
+      .single();
+
+    const { data: receiptRecord } = await supabase
+      .from('receipts')
+      .select('verification_hash')
+      .eq('payment_id', payment.id)
+      .single();
+
+    const required = await getRequiredDuesAmount();
+    const { data: paidPayments } = await supabase
+      .from('payments')
+      .select('amount')
+      .eq('student_id', payment.student_id)
+      .eq('academic_year', payment.academic_year);
+
+    const totalPaid = (paidPayments || []).reduce((sum, p) => sum + Number(p.amount), 0);
 
     res.json({
       receipt: {
@@ -96,19 +153,86 @@ router.get('/payments/:id/receipt', (req: AuthRequest, res: Response) => {
         amount: payment.amount,
         academic_year: payment.academic_year,
         semester: payment.semester,
-        full_name: payment.full_name,
-        index_number: payment.index_number,
-        department: payment.department,
-        level: payment.level,
-        phone_number: payment.phone_number,
-        verification_hash: payment.verification_hash,
-        total_paid: paidRow.total,
+        full_name: student?.full_name,
+        index_number: student?.index_number,
+        department: student?.department,
+        level: student?.level,
+        phone_number: student?.phone_number,
+        verification_hash: receiptRecord?.verification_hash,
+        total_paid: totalPaid,
         required,
       },
     });
   } catch (err) {
     console.error('Receipt fetch error:', err);
     res.status(500).json({ error: 'Failed to fetch receipt' });
+  }
+});
+
+// POST /student/proofs — submit a payment proof
+router.post('/proofs', async (req: AuthRequest, res: Response) => {
+  try {
+    const { payment_method, amount, academic_year, semester, reference_number, sender_phone, notes, proof_image_url } = req.body;
+
+    if (!payment_method || !amount || amount <= 0 || !academic_year || !semester) {
+      res.status(400).json({ error: 'payment_method, amount, academic_year, semester are required' });
+      return;
+    }
+
+    const { data: settings } = await supabase
+      .from('system_settings')
+      .select('setting_key, setting_value')
+      .in('setting_key', ['current_academic_year', 'current_semester']);
+
+    const settingsMap: Record<string, string> = {};
+    (settings || []).forEach(s => { settingsMap[s.setting_key] = s.setting_value; });
+
+    if (academic_year !== settingsMap.current_academic_year) {
+      res.status(400).json({ error: `Academic year must be ${settingsMap.current_academic_year}` });
+      return;
+    }
+
+    const { data: proof, error } = await supabase
+      .from('payment_proofs')
+      .insert({
+        student_id: req.user!.id,
+        payment_method,
+        amount: parseFloat(amount),
+        academic_year,
+        semester,
+        reference_number: reference_number || null,
+        sender_phone: sender_phone || null,
+        notes: notes || null,
+        proof_image_url: proof_image_url || null,
+        status: 'pending',
+      })
+      .select('id, payment_method, amount, academic_year, semester, reference_number, sender_phone, notes, proof_image_url, status, created_at')
+      .single();
+
+    if (error) throw error;
+
+    res.json({ proof });
+  } catch (err: any) {
+    console.error('Submit proof error:', err);
+    res.status(500).json({ error: err.message || 'Failed to submit proof' });
+  }
+});
+
+// GET /student/proofs — list own proofs
+router.get('/proofs', async (req: AuthRequest, res: Response) => {
+  try {
+    const { data: proofs, error } = await supabase
+      .from('payment_proofs')
+      .select('id, payment_method, amount, academic_year, semester, reference_number, sender_phone, notes, proof_image_url, status, review_notes, reviewed_at, created_at')
+      .eq('student_id', req.user!.id)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    res.json({ proofs: proofs || [] });
+  } catch (err) {
+    console.error('List proofs error:', err);
+    res.status(500).json({ error: 'Failed to fetch proofs' });
   }
 });
 

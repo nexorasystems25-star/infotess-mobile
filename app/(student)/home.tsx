@@ -105,11 +105,87 @@ export default function StudentHome() {
           <Text style={theme.typography.h3}>How to pay</Text>
         </View>
         <Text style={[theme.typography.body, { color: theme.colors.textDim }]}>
-          Make payment via Mobile Money, Bank Transfer, or Cash to an INFOTESS executive. Then submit proof and your receipt will be generated within 24 hours.
+          Make payment via Mobile Money, Bank Transfer/Deposit and submit proof via the app or pay at the INFOTESS Office. Then your receipt will be generated within 24 hours.
         </Text>
       </Card>
 
+      {/* Payment steps card */}
+      <Card style={{ marginBottom: theme.spacing.xxl }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: theme.spacing.lg }}>
+          <Ionicons name="wallet" size={20} color={theme.colors.primary} />
+          <Text style={theme.typography.h3}>Payment Steps</Text>
+        </View>
+
+        {/* Mobile Money */}
+        <View style={{ marginBottom: theme.spacing.lg }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: theme.spacing.sm }}>
+            <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: theme.colors.primarySoft, alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="phone-portrait" size={14} color={theme.colors.primary} />
+            </View>
+            <Text style={[theme.typography.bodyMedium, { color: theme.colors.text, fontWeight: '700' }]}>Mobile Money</Text>
+          </View>
+          {[
+            'Dial *170# on your phone',
+            'Select "Pay Bills" or "Merchant Payment"',
+            'Enter INFOTESS MoMo number: 0240 918 031',
+            'Enter your index number as reference',
+            'Enter the amount to pay',
+            'Confirm with your PIN',
+            'Screenshot the confirmation and submit it via the app or at the INFOTESS Office',
+          ].map((step, i) => (
+            <View key={i} style={{ flexDirection: 'row', gap: 10, marginBottom: 8, marginLeft: 4 }}>
+              <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: theme.colors.surface3, alignItems: 'center', justifyContent: 'center', marginTop: 1 }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: theme.colors.primary }}>{i + 1}</Text>
+              </View>
+              <Text style={[theme.typography.small, { color: theme.colors.textDim, flex: 1, lineHeight: 18 }]}>{step}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Divider */}
+        <View style={{ height: 1, backgroundColor: theme.colors.hairline, marginVertical: theme.spacing.sm }} />
+
+        {/* Bank Transfer / Deposit */}
+        <View style={{ marginTop: theme.spacing.sm }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: theme.spacing.sm }}>
+            <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: `${theme.colors.secondary}15`, alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="business" size={14} color={theme.colors.secondary} />
+            </View>
+            <Text style={[theme.typography.bodyMedium, { color: theme.colors.text, fontWeight: '700' }]}>Bank Transfer / Deposit</Text>
+          </View>
+          {[
+            'Use any of these banks: GCB, Ecobank, or Fidelity',
+            'Account Name: INFOTESS IT Department',
+            'Account Number: 1234567890',
+            'Branch: Kumasi Main',
+            'Use your index number as deposit reference',
+            'Keep your deposit slip or transfer confirmation',
+            'Submit proof via the app or at the INFOTESS office',
+          ].map((step, i) => (
+            <View key={i} style={{ flexDirection: 'row', gap: 10, marginBottom: 8, marginLeft: 4 }}>
+              <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: theme.colors.surface3, alignItems: 'center', justifyContent: 'center', marginTop: 1 }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: theme.colors.secondary }}>{i + 1}</Text>
+              </View>
+              <Text style={[theme.typography.small, { color: theme.colors.textDim, flex: 1, lineHeight: 18 }]}>{step}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Note */}
+        <View style={{ backgroundColor: theme.isDark ? `${theme.colors.primary}15` : '#e8f5e9', borderRadius: theme.radii.md, padding: theme.spacing.md, marginTop: theme.spacing.md }}>
+          <Text style={[theme.typography.small, { color: theme.colors.primary, lineHeight: 18 }]}>
+            <Text style={{ fontWeight: '700' }}>Note: </Text>
+            After payment, send your proof (screenshot or deposit slip) to the INFOTESS office or submit it via the app. Your receipt will be generated within 24 hours.
+          </Text>
+        </View>
+      </Card>
+
       {/* Quick links */}
+      <View style={{ flexDirection: 'row', gap: theme.spacing.md, marginBottom: theme.spacing.md }}>
+        <View style={{ flex: 1 }}>
+          <PrimaryButton title="Submit Proof" onPress={() => router.push('/(student)/submit-proof')} icon="cloud-upload" />
+        </View>
+      </View>
       <View style={{ flexDirection: 'row', gap: theme.spacing.md }}>
         <View style={{ flex: 1 }}>
           <PrimaryButton title="History" onPress={() => router.push('/(student)/payments')} icon="receipt" />

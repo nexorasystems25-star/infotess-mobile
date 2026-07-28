@@ -30,7 +30,6 @@ export type PaymentMethod = 'Cash' | 'Mobile Money' | 'Bank Transfer';
 
 export interface Payment {
   id: number;
-  payment_id: number;
   student_id?: number;
   amount: number;
   academic_year: string;
@@ -110,4 +109,24 @@ export interface AdminUser {
   role: Role;
   name?: string;
   type?: string;
+}
+
+export type ProofStatus = 'pending' | 'approved' | 'rejected';
+
+export interface PaymentProof {
+  id: number;
+  student_id: number;
+  payment_method: string;
+  amount: number;
+  academic_year: string;
+  semester: string;
+  reference_number: string | null;
+  sender_phone: string | null;
+  notes: string | null;
+  proof_image_url: string | null;
+  status: ProofStatus;
+  review_notes: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  students?: Pick<Student, 'full_name' | 'index_number' | 'department' | 'level'>;
 }

@@ -1,10 +1,10 @@
 import { Router, Request, Response } from 'express';
-import db from '../db/index.js';
+import { supabase } from '../db/index.js';
 
 const router = Router();
 
 // GET /verify (public - no auth required)
-router.get('/verify', (req: Request, res: Response) => {
+router.get('/verify', async (req: Request, res: Response) => {
   try {
     const receiptNumber = (req.query.q as string || '').trim();
     if (!receiptNumber) {
@@ -12,35 +12,44 @@ router.get('/verify', (req: Request, res: Response) => {
       return;
     }
 
-    const receipt = db.prepare(
-      `SELECT p.id as payment_id, p.amount, p.academic_year, p.semester, p.payment_date, p.payment_method, p.receipt_number,
-              s.full_name as student_name, s.index_number, s.department, s.level,
-              r.verification_hash
-       FROM payments p
-       JOIN students s ON s.id = p.student_id
-       LEFT JOIN receipts r ON r.payment_id = p.id
-       WHERE p.receipt_number = ?`
-    ).get(receiptNumber) as any;
+    const { data: receipt } = await supabase
+      .from('payments')
+      .select('id, amount, academic_year, semester, payment_date, payment_method, receipt_number, student_id')
+      .eq('receipt_number', receiptNumber)
+      .single();
 
     if (!receipt) {
       res.json({ result: { valid: false, receipt_number: receiptNumber } });
       return;
     }
 
+    // Fetch student and receipt separately to avoid Supabase type issues
+    const { data: student } = await supabase
+      .from('students')
+      .select('full_name, index_number, department, level')
+      .eq('id', receipt.student_id)
+      .single();
+
+    const { data: receiptRecord } = await supabase
+      .from('receipts')
+      .select('verification_hash')
+      .eq('payment_id', receipt.id)
+      .single();
+
     res.json({
       result: {
         valid: true,
         receipt_number: receipt.receipt_number,
-        student_name: receipt.student_name,
-        index_number: receipt.index_number,
-        department: receipt.department,
-        level: receipt.level,
+        student_name: student?.full_name,
+        index_number: student?.index_number,
+        department: student?.department,
+        level: student?.level,
         amount: receipt.amount,
         academic_year: receipt.academic_year,
         semester: receipt.semester,
         payment_date: receipt.payment_date,
         payment_method: receipt.payment_method,
-        verification_hash: receipt.verification_hash,
+        verification_hash: receiptRecord?.verification_hash,
       },
     });
   } catch (err) {

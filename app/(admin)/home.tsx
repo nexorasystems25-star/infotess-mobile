@@ -122,9 +122,9 @@ export default function AdminDashboard() {
         <Card key={p.id} elevation="soft" style={{ marginBottom: theme.spacing.md }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <View style={{ flex: 1 }}>
-              <Text style={[theme.typography.bodyMedium, { color: theme.colors.text }]}>{(p as any).full_name ?? p.student?.full_name ?? '—'}</Text>
+              <Text style={[theme.typography.bodyMedium, { color: theme.colors.text }]}>{(p as any).students?.full_name ?? (p as any).full_name ?? '—'}</Text>
               <Text style={[theme.typography.small, { color: theme.colors.textDim, marginTop: 2 }]}>
-                {(p as any).index_number ?? p.student?.index_number} · {p.payment_method}
+                {(p as any).students?.index_number ?? (p as any).index_number} · {p.payment_method}
               </Text>
             </View>
             <View style={{ alignItems: 'flex-end' }}>

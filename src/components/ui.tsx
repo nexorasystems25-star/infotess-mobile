@@ -185,7 +185,7 @@ export function Field({
   placeholder?: string;
   secure?: boolean;
   keyboardType?: 'default' | 'email-address' | 'numeric' | 'phone-pad';
-  autoCapitalize?: 'none' | 'sentences' | 'words';
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   icon?: keyof typeof Ionicons.glyphMap;
 }) {
   const theme = useT();

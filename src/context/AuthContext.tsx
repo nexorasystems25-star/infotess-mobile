@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { Platform } from 'react-native';
+import { Platform, DeviceEventEmitter } from 'react-native';
 import { useRouter } from 'expo-router';
 import { storage } from '@/services/storage';
-import { api, ApiError } from '@/services/api';
+import { api, ApiError, syncPendingOperations, forceRefreshAll } from '@/services/api';
+import { localDb } from '@/services/localDb';
 import * as Haptics from 'expo-haptics';
 import { LoginForm, Role, Student, User } from '@/types';
 
@@ -41,9 +42,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           role: me.user.role || (me.user as any).type,
         };
         setUser(normalizedUser);
-        if (me.student) setStudent(me.student);
+        if (me.student) {
+          setStudent(me.student);
+        } else if (normalizedUser.role === 'student') {
+          setStudent({
+            id: normalizedUser.id,
+            index_number: (normalizedUser as any).index_number || '',
+            full_name: (normalizedUser as any).full_name || '',
+            department: (normalizedUser as any).department || '',
+            level: (normalizedUser as any).level || '',
+            phone_number: (normalizedUser as any).phone_number || null,
+            email: normalizedUser.email,
+          });
+        }
       } catch (e) {
-        await storage.clear();
+        // Offline fallback: restore user from cached storage
+        const role = await storage.getRole();
+        const userId = await storage.getUserId();
+        if (role && userId) {
+          setUser({ id: Number(userId), email: '', role: role as any, type: role, name: '' });
+          // Try to load student data from cache
+          if (role === 'student') {
+            const cached = await localDb.getStudentProfile();
+            if (cached) {
+              setStudent(cached);
+            }
+          }
+        } else {
+          await storage.clear();
+        }
       } finally {
         setLoading(false);
       }
@@ -65,7 +92,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await storage.setUserId(String(normalizedUser.id));
       await storage.setRole(normalizedUser.role);
       setUser(normalizedUser);
-      if (res.student) setStudent(res.student);
+      if (res.student) {
+        setStudent(res.student);
+      } else if (normalizedUser.role === 'student') {
+        setStudent({
+          id: normalizedUser.id,
+          index_number: (normalizedUser as any).index_number || '',
+          full_name: (normalizedUser as any).full_name || '',
+          department: (normalizedUser as any).department || '',
+          level: (normalizedUser as any).level || '',
+          phone_number: (normalizedUser as any).phone_number || null,
+          email: normalizedUser.email,
+        });
+      }
       if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       return true;
     } catch (e) {
@@ -81,6 +120,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     try { await api.logout(); } catch {}
     await storage.clear();
+    await localDb.clearAll();
     setUser(null);
     setStudent(null);
     router.replace('/(auth)/login');
@@ -95,9 +135,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         role: me.user.role || (me.user as any).type,
       };
       setUser(normalizedUser);
-      if (me.student) setStudent(me.student);
+      if (me.student) {
+        setStudent(me.student);
+      } else if (normalizedUser.role === 'student') {
+        setStudent({
+          id: normalizedUser.id,
+          index_number: (normalizedUser as any).index_number || '',
+          full_name: (normalizedUser as any).full_name || '',
+          department: (normalizedUser as any).department || '',
+          level: (normalizedUser as any).level || '',
+          phone_number: (normalizedUser as any).phone_number || null,
+          email: normalizedUser.email,
+        });
+      }
     } catch {}
   };
+
+  // ─── Sync on reconnect ──────────────────────────────────────────────────
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('infotess-online', async () => {
+      const token = await storage.getToken();
+      const role = await storage.getRole();
+      if (!token || !role) return;
+      try {
+        await syncPendingOperations();
+        await forceRefreshAll(role as 'student' | 'admin');
+      } catch {}
+    });
+    return () => sub.remove();
+  }, []);
 
   const value = useMemo<AuthState>(
     () => ({ user, student, loading, error, login, logout, refresh, clearError: () => setError(null) }),

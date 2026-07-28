@@ -38,6 +38,10 @@ export default function AdminTabs() {
         options={{ title: 'Payments', tabBarIcon: ({ color, size }) => <Ionicons name="cash" size={size} color={color} /> }}
       />
       <Tabs.Screen
+        name="proofs"
+        options={{ title: 'Proofs', tabBarIcon: ({ color, size }) => <Ionicons name="document-text" size={size} color={color} /> }}
+      />
+      <Tabs.Screen
         name="reports"
         options={{ title: 'Reports', tabBarIcon: ({ color, size }) => <Ionicons name="bar-chart" size={size} color={color} /> }}
       />

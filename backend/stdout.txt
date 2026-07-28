@@ -1,0 +1,11 @@
+
+🚀 INFOTESS SDMS API running on http://localhost:3002
+   Health: http://localhost:3002/api/v1/health
+   Auth:   http://localhost:3002/api/v1/auth/login
+   DB:     Supabase (https://uxsdpxezyapwcwadjmws.supabase.co)
+
+Test accounts:
+  Admin:    admin@infotess.com / admin123
+  Student:  student@infotess.com / student123
+  Index:    INF/2024/001
+

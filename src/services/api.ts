@@ -134,6 +134,8 @@ export const api = {
       cacheKey: 'infotess_cache:student_profile',
       allowOffline: true,
     }),
+  studentSettings: () =>
+    request<{ current_academic_year: string; current_semester: string; annual_dues_amount: string }>('/student/settings'),
   myDues: () =>
     request<{ dues: StudentDues }>('/student/dues', {
       cacheKey: 'infotess_cache:student_dues',

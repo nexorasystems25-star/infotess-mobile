@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Alert, Image, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -23,8 +23,15 @@ export default function SubmitProof() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
 
-  const currentYear = new Date().getFullYear().toString();
-  const currentSemester = new Date().getMonth() < 6 ? '1' : '2';
+  const [currentYear, setCurrentYear] = useState(new Date().getFullYear().toString());
+  const [currentSemester, setCurrentSemester] = useState(new Date().getMonth() < 6 ? '1' : '2');
+
+  useEffect(() => {
+    api.studentSettings().then((s) => {
+      setCurrentYear(s.current_academic_year);
+      setCurrentSemester(s.current_semester);
+    }).catch(() => {});
+  }, []);
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();

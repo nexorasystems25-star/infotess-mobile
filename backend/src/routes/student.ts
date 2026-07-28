@@ -218,6 +218,28 @@ router.post('/proofs', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// GET /student/settings — current academic year & semester
+router.get('/settings', async (_req: AuthRequest, res: Response) => {
+  try {
+    const { data: rows } = await supabase
+      .from('system_settings')
+      .select('setting_key, setting_value')
+      .in('setting_key', ['current_academic_year', 'current_semester', 'annual_dues_amount']);
+
+    const settings: Record<string, string> = {};
+    (rows || []).forEach(r => { settings[r.setting_key] = r.setting_value; });
+
+    res.json({
+      current_academic_year: settings.current_academic_year || new Date().getFullYear().toString(),
+      current_semester: settings.current_semester || '1',
+      annual_dues_amount: settings.annual_dues_amount || '80',
+    });
+  } catch (err) {
+    console.error('Fetch settings error:', err);
+    res.status(500).json({ error: 'Failed to fetch settings' });
+  }
+});
+
 // GET /student/proofs — list own proofs
 router.get('/proofs', async (req: AuthRequest, res: Response) => {
   try {

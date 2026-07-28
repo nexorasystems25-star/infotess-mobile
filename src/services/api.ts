@@ -169,7 +169,7 @@ export const api = {
   studentDues: (studentId: number) =>
     request<{ dues: StudentDues }>(`/admin/student_dues?id=${studentId}`),
   recordPayment: (p: {
-    student_id: number;
+    student_id: number | string;
     amount: number;
     academic_year: string;
     semester: string;

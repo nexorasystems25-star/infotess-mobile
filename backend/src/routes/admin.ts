@@ -126,15 +126,30 @@ router.post('/payments', async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const { data: student } = await supabase
-      .from('students')
-      .select('id, full_name, index_number')
-      .eq('id', student_id)
-      .single();
+    const studentIdNum = parseInt(student_id);
+    let student;
+
+    if (studentIdNum && !isNaN(studentIdNum)) {
+      const { data } = await supabase
+        .from('students')
+        .select('id, full_name, index_number')
+        .eq('id', studentIdNum)
+        .single();
+      student = data;
+    }
+
+    if (!student) {
+      const { data } = await supabase
+        .from('students')
+        .select('id, full_name, index_number')
+        .eq('index_number', String(student_id))
+        .single();
+      student = data;
+    }
 
     if (!student) { res.status(404).json({ error: 'Student not found' }); return; }
 
-    const result = await createPayment({ student_id, amount, academic_year, semester, payment_method, payment_date, recorded_by: req.user!.id, phone_number, transaction_id, account_number });
+    const result = await createPayment({ student_id: student.id, amount, academic_year, semester, payment_method, payment_date, recorded_by: req.user!.id, phone_number, transaction_id, account_number });
 
     res.json({ payment: { payment_id: result.id, receipt_number: result.receipt_number, amount, academic_year, semester, payment_method, payment_date }, receipt_url: `/receipts/${result.receipt_number}.pdf` });
   } catch (err: any) {

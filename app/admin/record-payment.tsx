@@ -59,7 +59,7 @@ export default function RecordPayment() {
     setBusy(true);
     try {
       const r = await api.recordPayment({
-        student_id: Number(studentId),
+        student_id: studentId,
         amount: Number(amount),
         academic_year: academicYear,
         semester,
@@ -106,7 +106,7 @@ export default function RecordPayment() {
           </View>
         </View>
 
-        <Field label="Student ID" value={studentId} onChangeText={setStudentId} placeholder="e.g. 42" icon="person" keyboardType="numeric" />
+        <Field label="Index Number" value={studentId} onChangeText={setStudentId} placeholder="e.g. 5230100001" icon="person" autoCapitalize="none" />
         <Field label="Amount (GH₵)" value={amount} onChangeText={setAmount} placeholder="0.00" icon="cash" keyboardType="numeric" />
 
         <View style={{ marginBottom: theme.spacing.md }}>
